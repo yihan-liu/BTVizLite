@@ -1,6 +1,5 @@
 # display_widget.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QPlainTextEdit, QMessageBox, QComboBox
-from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QPlainTextEdit, QMessageBox
 import qasync
 import struct
 from collections import deque
@@ -9,8 +8,6 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from .utils import calculate_window
 from .plot_settings_widget import PlotSettingsWidget
-from .config_loader import load_config
-from .btviz_exceptions import *
 
 
 class DisplayWidget(QWidget):
@@ -38,22 +35,20 @@ class DisplayWidget(QWidget):
         self.isNotif = False
         self.isRead = False
 
-        self._fig, self._ax = plt.subplots()
-        self._line = None
-        self._title = None
-        self._xlabel = None
-        self._ylabel = None
-        self._canvas = None
+        self.fig, self.ax = plt.subplots()
+        self.line = None
+        self.title = None
+        self.xlabel = None
+        self.ylabel = None
+        self.canvas = None
         self.animateInterval = None
-        self._animation = None
+        self.animation = None
         self.isPlotting = False
-        self._timer = None
 
         self.notifButton = None
         self.plotButton = None
         self.decodeMethodDropdown = None
         self.textfield = None
-        self.readButton = None
         self.intervalDropdown = None
         self.settingsButton = None
         
@@ -69,16 +64,8 @@ class DisplayWidget(QWidget):
         self.notifButton.clicked.connect(self.enableNotif)
 
         self.plotButton = QPushButton('Plot')
-        self.plotButton.clicked.connect(self._plot)
+        self.plotButton.clicked.connect(self.plot)
         self.plotButton.setEnabled(False)
-
-        # Dropdown for selecting data decoding method
-        self.decodeMethodDropdown = QComboBox()
-        self.config = load_config('config.json')
-        for option in self.config['decodeOptions']:
-            self.decodeMethodDropdown.addItem(option['name'])
-        self.decodeMethodDropdown.addItem("String Literal")
-        self.decodeMethodDropdown.addItem("Comma Delimited String Literal")
 
         self.setWindowTitle('Characteristic Reader')
 
@@ -88,35 +75,22 @@ class DisplayWidget(QWidget):
         self.textfield = QPlainTextEdit()
         self.textfield.setReadOnly(True)
 
-        self.readButton = QPushButton("Enable Timed Read")
-        self.readButton.clicked.connect(self.enableTimedRead)
-
-        self.intervalDropdown = QComboBox()
-        self.intervalDropdown.addItem(".")
-        self.intervalDropdown.addItem("100")
-        self.intervalDropdown.addItem("200")
-        self.intervalDropdown.addItem("500")
-        self.intervalDropdown.addItem("1000")
-
         layout = QVBoxLayout(self)
         layout.addWidget(self.notifButton)
-        layout.addWidget(self.readButton)
-        layout.addWidget(self.decodeMethodDropdown)
-        layout.addWidget(self.intervalDropdown)
         layout.addWidget(self.textfield)
         layout.addWidget(self.plotButton)
 
-        self._line, = self._ax.plot(self.valueQueue)
-        self._title = "ADC"
-        self._xlabel = "Time (a.u.)"
-        self._ylabel = "Value (a.u.)"
-        self._canvas = FigureCanvas(self._fig)
+        self.line, = self.ax.plot(self.valueQueue)
+        self.title = "ADC"
+        self.xlabel = "Time (a.u.)"
+        self.ylabel = "Value (a.u.)"
+        self.canvas = FigureCanvas(self.fig)
 
-        self._ax.set_title(self._title)
-        self._ax.set_xlabel(self._xlabel)
-        self._ax.set_ylabel(self._ylabel)
+        self.ax.set_title(self.title)
+        self.ax.set_xlabel(self.xlabel)
+        self.ax.set_ylabel(self.ylabel)
 
-        layout.addWidget(self._canvas)
+        layout.addWidget(self.canvas)
 
         self.settingsButton = QPushButton("Plot Settings")
         self.settingsButton.clicked.connect(self.onSettings)
@@ -137,13 +111,13 @@ class DisplayWidget(QWidget):
         Update plot settings
         """
         str_list = settings_str.split(",")
-        self._title = str_list[0]
-        self._xlabel = str_list[1]
-        self._ylabel = str_list[2]
+        self.title = str_list[0]
+        self.xlabel = str_list[1]
+        self.ylabel = str_list[2]
         self.valueQueue = deque(maxlen=int(str_list[3]))
-        self._ax.set_title(self._title)
-        self._ax.set_xlabel(self._xlabel)
-        self._ax.set_ylabel(self._ylabel)
+        self.ax.set_title(self.title)
+        self.ax.set_xlabel(self.xlabel)
+        self.ax.set_ylabel(self.ylabel)
 
     @qasync.asyncSlot()
     async def enableNotif(self):
@@ -151,19 +125,12 @@ class DisplayWidget(QWidget):
         Enables notifications for the BLE characteristic.
         """
         self.notifButton.setEnabled(False)
-        self.readButton.setEnabled(False)
-        self.decodeMethodDropdown.setEnabled(False)
-        self.intervalDropdown.setEnabled(False)
-
         try:
             await self.m_client.start_notify(self.m_char, self.decodeRoutine)
-            if self.decodeMethodDropdown.currentText() != "String Literal":
-                self.plotButton.setEnabled(True)
-            self.decodeMethodDropdown.setEnabled(False)
             self.isNotif = True
         except Exception as e:
-            raise NotificationError(f"Unable to start notification {str(e)}")
-            # QMessageBox.information(self, 'Info', 'Unable to start notification')
+            QMessageBox.information(self, "Info", f"Unable to start notification: {e}")
+            # raise NotificationError(f"Unable to start notification {str(e)}")
 
     def decodeRoutine(self, char, value):
         """
@@ -172,31 +139,31 @@ class DisplayWidget(QWidget):
         :param char: The characteristic that sent the notification.
         :param value: The value of the notification.
         """
-        if (self.decodeMethodDropdown.currentText() != "String Literal" and
-                self.decodeMethodDropdown.currentText() != "Comma Delimited String Literal"):
-            option = self.config['decodeOptions'][self.decodeMethodDropdown.currentIndex()]
-            format_str = option['format']
-
-            if len(value) >= struct.calcsize(format_str):
-                try:
-                    decoded_value = struct.unpack(format_str, value)[0]
-                except struct.error as e:
-                    raise DataDecodingError(f"Error decoding data: {str(e)}")
-                text = str(decoded_value) + '\n' + self.textfield.toPlainText()
-                self.textfield.setPlainText(text)
-                self.valueQueue.append(decoded_value)
-                self.valueList.append(decoded_value)
-            else:
-                QMessageBox.warning(self, 'Error', 'Received data does not match expected format.')
-
-        elif self.decodeMethodDropdown.currentText() == "String Literal":
+        try:
             decoded_value = value.decode("UTF-8")
-            self.plotButton.setEnabled(False)
-            text = str(decoded_value) + '\n' + self.textfield.toPlainText()
-            self.textfield.setPlainText(text)
+            decoded_list = decoded_value.split(",")
+        except Exception as e:
+            QMessageBox.warning(self, "Warning", f"Unable to decode: {e}")
+            self.close()
 
-        else:
-            decoded_value = value.decode("UTF-8")
+        text = str(decoded_value) + '\n' + self.textfield.toPlainText()
+        self.textfield.setPlainText(text)
+        if (self.isFirstTransactions):
+            self.dataframe = []
+            self._lines = []
+            for i in range(len(decoded_list)):
+                self.dataframe.append(deque(maxlen=100))
+
+            self.isFirstTransactions = False
+            self.plotButton.setEnabled(True)
+            self.saveButton.setEnabled(True)
+
+        for i in range(len(decoded_list)):
+            try:
+                item = float(decoded_list[i].replace('\x00', ''))
+            except:
+                QMessageBox.warning(self, "Warning", "Unable to decode")
+            self.dataframe[i].append(item)
 
     def plotUpdate(self, frame):
         """
@@ -206,47 +173,23 @@ class DisplayWidget(QWidget):
         """
         if self.isPlotting:
             # Update plot data
-            self._line.set_xdata(range(len(self.valueQueue)))  # TODO: this should be related to real-time
-            self._line.set_ydata(self.valueQueue)
-            self._ax.relim()
-            self._ax.autoscale_view()
+            self.line.set_xdata(range(len(self.valueQueue)))  # TODO: this should be related to real-time
+            self.line.set_ydata(self.valueQueue)
+            self.ax.relim()
+            self.ax.autoscale_view()
 
             # Set line color
-            self._line.set_color('r')
-            return self._line,
+            self.line.set_color('r')
+            return self.line,
 
-    def _plot(self):
+    def plot(self):
         """
         Starts plotting the BLE characteristic data in real-time.
         """
         self.plotButton.setEnabled(False)
-        self._animation = FuncAnimation(self._fig, self.plotUpdate, interval=1, cache_frame_data=False)
+        self.animation = FuncAnimation(self.fig, self.plotUpdate, interval=1, cache_frame_data=False)
         self.isPlotting = True
-        self._canvas.draw_idle()
-
-    def enableTimedRead(self):
-        """
-        Enables Timed Read of a BLE characteristic
-        """
-        try:
-            self.animateInterval = int(self.intervalDropdown.currentText())
-        except:
-            QMessageBox.warning(self, "error", "select valid interval")
-            return
-
-        self.readButton.setEnabled(False)
-        self.notifButton.setEnabled(False)
-        self.decodeMethodDropdown.setEnabled(False)
-        self.intervalDropdown.setEnabled(False)
-
-        if self.decodeMethodDropdown.currentText() != "String Literal":
-            self.plotButton.setEnabled(True)
-
-        # TODO -change timer settings
-        self._timer = QTimer(self)
-        self._timer.timeout.connect(self.timeoutHandler)
-        self._timer.start(self.animateInterval)
-        self.isRead = True
+        self.canvas.draw_idle()
 
     @qasync.asyncSlot()
     async def timeoutHandler(self):
@@ -263,6 +206,3 @@ class DisplayWidget(QWidget):
         """
         if self.isNotif:
             await self.m_client.stop_notify(self.m_char)
-
-        if self.isRead:
-            self._timer.stop()

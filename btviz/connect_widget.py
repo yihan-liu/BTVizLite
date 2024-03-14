@@ -4,7 +4,6 @@ import qasync
 import bleak
 from .display_widget import DisplayWidget
 from .utils import calculate_window
-from .btviz_exceptions import *
 
 
 class ConnectWidget(QWidget):
@@ -80,9 +79,10 @@ class ConnectWidget(QWidget):
             try:
                 await self.m_client.connect()
             except Exception as e:
-                raise DeviceConnectionError(f"Failed to connect to the BLE device: {str(e)}")
-                # QMessageBox.warning(self, 'warning', 'Unable to connect')
-                # self.close()
+                # raise DeviceConnectionError(f"Failed to connect to the BLE device: {str(e)}")
+                QMessageBox.warning(self, "warning", f'Unable to connect: {e}')
+                self.close()
+
             services = self.m_client.services
             for service in services:
                 self.servicesList.addItem(str(service))
@@ -108,8 +108,6 @@ class ConnectWidget(QWidget):
         if self.servicesList.currentItem():
             service = self.servicesDict[self.servicesList.currentItem().text()]
             chars = service.characteristics
-            if not chars:
-                raise CharacteristicNotFoundError("No characteristics found for the selected service.")
             for char in chars:
                 self.charList.addItem(str(char))
                 self.charDict[str(char)] = char
@@ -122,7 +120,7 @@ class ConnectWidget(QWidget):
         Opens a display widget for the selected characteristic to monitor its data.
         """
         m_char = self.charDict[self.charList.currentItem().text()]
-        self.charMonitorWindow = DisplayWidget(self.m_client,m_char)
+        self.charMonitorWindow = DisplayWidget(self.m_client, m_char)
         self.charMonitorWindow.show()
 
     @qasync.asyncClose
@@ -130,6 +128,7 @@ class ConnectWidget(QWidget):
         if self.m_client:
             try:
                 await self.m_client.disconnect()
-            except:
+            except Exception as e:
+                QMessageBox.warning(self, "warning", f"Could not disconnect: {e}")
                 pass
             self.m_client = None

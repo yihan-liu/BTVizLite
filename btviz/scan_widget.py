@@ -4,7 +4,6 @@ import qasync
 import bleak
 from .connect_widget import ConnectWidget
 from .utils import calculate_window
-from .btviz_exceptions import *
 
 
 class ScanWidget(QWidget):
@@ -62,8 +61,6 @@ class ScanWidget(QWidget):
         """
         self.scanButton.setEnabled(False)
         devices = await bleak.BleakScanner.discover()
-        if not devices:
-            raise DeviceNotFoundError("No BLE devices found during scanning.")
 
         for device in devices:
             self.devicesList.addItem(device.name)
