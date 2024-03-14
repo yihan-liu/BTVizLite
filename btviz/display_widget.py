@@ -25,31 +25,34 @@ class DisplayWidget(QWidget):
         """
         super().__init__()
 
-        self.config = None
-
+        # BLE instances
         self.m_client = client
         self.m_char = char
 
+        # data container
         self.data_queues = []
 
+        # connection & display flags
         self.isNotif = False
         self.isRead = False
         self.isFirstTransactions = True
         self.isFirstPlot = True
 
+        # raw data
+        self.notifButton = None
+        self.textfield = None
+        # self.saveButton = None  # TODO
 
+        # display instances
+        self.plotButton = None
+        self.isPlotting = False
         self.lines = None
         self.title = None
         self.xlabel = None
         self.ylabel = None
         self.animateInterval = None
         self.animation = None
-        self.isPlotting = False
-
-        self.notifButton = None
-        self.textfield = None
-        # self.saveButton = None  # TODO
-        self.plotButton = None
+        
         self.settingsButton = None
         
         self.window = None
