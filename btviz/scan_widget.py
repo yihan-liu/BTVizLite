@@ -85,7 +85,7 @@ class ScanWidget(QWidget):
         if self.devicesList.currentItem().text():
             device = self.devicesDict[self.devicesList.currentItem().text()]
             self.connectServicesWindow = ConnectWidget(device)
-            self.connectServicesWindow.bt_manager = self.bt_manager
+            self.connectServicesWindow.bt_manager = self.bt_manager  # pass the bt_manager to next window
             self.connectServicesWindow.show()
         else:
             QMessageBox.warning(self, "Warning", "Select Valid Device")

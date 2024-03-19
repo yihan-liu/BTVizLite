@@ -2,7 +2,6 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QLabel, QMessageBox
 import qasync
 
-from btviz.core import BTManager
 from btviz.ui_utils import calculate_window
 from .display_widget import DisplayWidget
 

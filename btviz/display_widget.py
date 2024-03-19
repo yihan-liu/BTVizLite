@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
-from btviz.core import BTManager
 from btviz.ui_utils import calculate_window
 from .plot_settings_widget import PlotSettingsWidget
 

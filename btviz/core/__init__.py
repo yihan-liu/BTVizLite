@@ -1,9 +1,10 @@
 # btviz/core/__init__.py
+from typing import Awaitable, Callable, List, Optional, Union
+
 from bleak import BleakScanner, BLEDevice, BleakClient
 from bleak.backends.service import BleakGATTService, BleakGATTServiceCollection
 from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.exc import BleakError
-from typing import Callable, List, Optional, Union, Awaitable
 
 
 class BTManager:
@@ -62,3 +63,4 @@ class BTManager:
             return await self.client.read_gatt_char(characteristic)
         else:
             raise Exception("No device connected")
+        
