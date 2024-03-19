@@ -1,36 +1,42 @@
 # connect_widget.py
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QLabel, QMessageBox
 import qasync
-import bleak
+
+from btviz.core import BTManager
+from btviz.ui_utils import calculate_window
 from .display_widget import DisplayWidget
-from .utils import calculate_window
 
 
 class ConnectWidget(QWidget):
     def __init__(self, device):
         super().__init__()
 
-        self.device = device
+        self.bt_manager = None
 
+        # containers
+        self.device = device
         self.servicesDict = {}
         self.charDict = {}
 
+        # connection flags
         self.isDeviceDiscovered = False
         self.isConnected = False
         self.isServiceDiscovered = False
         self.isCharDiscovered = False
 
-        self.m_client = None
-
-        self.scanServices()
-
+        # UI elements
         self.serviceButton = None
         self.connectButton = None
         self.servicesList = None
         self.charList = None
-        self.charMonitorWindow = None
+        self.charDisplayWindow = None
 
+        # layout instance
+        self.layout_ = QVBoxLayout(self)
+
+        # start UI
         self.initUI()
+        self.scanServices()
 
     def initUI(self):
         self.setWindowTitle("Device Connect")
@@ -49,14 +55,12 @@ class ConnectWidget(QWidget):
 
         self.charList = QListWidget(self)
 
-        layout = QVBoxLayout(self)
-
-        layout.addWidget(self.connectButton)
-        layout.addWidget(QLabel('Service List'))
-        layout.addWidget(self.servicesList)
-        layout.addWidget(self.serviceButton)
-        layout.addWidget(QLabel('Characteristic List'))
-        layout.addWidget(self.charList)
+        self.layout_.addWidget(self.connectButton)
+        self.layout_.addWidget(QLabel('Service List'))
+        self.layout_.addWidget(self.servicesList)
+        self.layout_.addWidget(self.serviceButton)
+        self.layout_.addWidget(QLabel('Characteristic List'))
+        self.layout_.addWidget(self.charList)
 
     @qasync.asyncSlot()
     async def disconnect(self):
@@ -64,8 +68,8 @@ class ConnectWidget(QWidget):
         Disconnects from the currently connected BLE device.
         """
         self.connectButton.setEnabled(False)
-        if self.m_client:
-            await self.m_client.disconnect()
+        if self.bt_manager:
+            await self.bt_manager.disconnect_from_device()
         self.close()
 
     @qasync.asyncSlot()
@@ -75,28 +79,25 @@ class ConnectWidget(QWidget):
         """
         self.connectButton.setEnabled(False)
         if self.device:
-            self.m_client = bleak.BleakClient(self.device)
             try:
-                await self.m_client.connect()
+                await self.bt_manager.connect_to_device(self.device)
+                services = await self.bt_manager.get_services()
+                for service in services:
+                    self.servicesList.addItem(str(service))
+                    self.servicesDict[str(service)] = service
+                    self.connectButton.setText('Disconnect')
+                    self.connectButton.disconnect()
+                    self.connectButton.clicked.connect(self.disconnect)
+                    self.connectButton.setEnabled(True)
+
+                    self.serviceButton.setEnabled(True)
+
+                    self.charList.doubleClicked.connect(self.charMonitor)
             except Exception as e:
-                # raise DeviceConnectionError(f"Failed to connect to the BLE device: {str(e)}")
-                QMessageBox.warning(self, "warning", f'Unable to connect: {e}')
+                QMessageBox.warning(self, "Warning", f"Unable to connect: {str(e)}")
                 self.close()
-
-            services = self.m_client.services
-            for service in services:
-                self.servicesList.addItem(str(service))
-                self.servicesDict[str(service)] = service
-                self.connectButton.setText('Disconnect')
-                self.connectButton.disconnect()
-                self.connectButton.clicked.connect(self.disconnect)
-                self.connectButton.setEnabled(True)
-
-                self.serviceButton.setEnabled(True)
-
-                self.charList.doubleClicked.connect(self.charMonitor)
         else:
-            QMessageBox.warning(self, 'warning', 'Unable to connect')
+            QMessageBox.warning(self, "Warning", "Unable to connect to the device.")
             self.close()
 
     @qasync.asyncSlot()
@@ -107,12 +108,12 @@ class ConnectWidget(QWidget):
         self.serviceButton.setEnabled(False)
         if self.servicesList.currentItem():
             service = self.servicesDict[self.servicesList.currentItem().text()]
-            chars = service.characteristics
+            chars = await self.bt_manager.get_characteristics(service)
             for char in chars:
-                self.charList.addItem(str(char))
-                self.charDict[str(char)] = char
+                self.charList.addItem(str(char.uuid))
+                self.charDict[str(char.uuid)] = char
         else:
-            QMessageBox.warning(self, 'warning', 'Please select a valid option')
+            QMessageBox.warning(self, "Warning", "Please select a valid characteristic.")
 
     @qasync.asyncSlot()
     async def charMonitor(self):
@@ -120,15 +121,16 @@ class ConnectWidget(QWidget):
         Opens a display widget for the selected characteristic to monitor its data.
         """
         m_char = self.charDict[self.charList.currentItem().text()]
-        self.charMonitorWindow = DisplayWidget(self.m_client, m_char)
-        self.charMonitorWindow.show()
+        self.charDisplayWindow = DisplayWidget(m_char)
+        self.charDisplayWindow.bt_manager = self.bt_manager  # set the bt_manager instance
+        self.charDisplayWindow.show()
 
     @qasync.asyncClose
     async def closeEvent(self, event):
-        if self.m_client:
+        if self.bt_manager:
             try:
-                await self.m_client.disconnect()
+                await self.bt_manager.disconnect_from_device()
             except Exception as e:
-                QMessageBox.warning(self, "warning", f"Could not disconnect: {e}")
+                QMessageBox.warning(self, "Warning", f"Could not disconnect: {str(e)}")
                 pass
-            self.m_client = None
+            self.bt_manager = None

@@ -1,4 +1,4 @@
-# utils.py
+# btviz/ui_utils/__init__.py
 from PyQt5.QtWidgets import QApplication
 
 
