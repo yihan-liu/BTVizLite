@@ -1,13 +1,18 @@
 # display_widget.py
 from collections import deque
 
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QPlainTextEdit, QMessageBox
+from PyQt5.QtWidgets import (QWidget,
+                             QVBoxLayout,
+                             QPushButton,
+                             QPlainTextEdit,
+                             QMessageBox)
 import qasync
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
+from btviz.core import BTManager
 from btviz.ui_utils import calculate_window
 from .plot_settings_widget import PlotSettingsWidget
 
@@ -22,7 +27,7 @@ class DisplayWidget(QWidget):
         """
         super().__init__()
 
-        self.bt_manager = None
+        self.bt_manager = BTManager.instance()
 
         # BLE instances
         self.characteristic = characteristic
@@ -76,7 +81,7 @@ class DisplayWidget(QWidget):
 
         # enable notification
         self.notifButton = QPushButton('Enable Notifications')
-        self.notifButton.clicked.connect(self.enableNotif)
+        self.notifButton.clicked.connect(self.enableNotification)
 
         # initialize plotting
         self.plotButton = QPushButton('Plot')
@@ -114,7 +119,7 @@ class DisplayWidget(QWidget):
         self.ax.set_ylabel(self.ylabel)
 
     @qasync.asyncSlot()
-    async def enableNotif(self):
+    async def enableNotification(self):
         """Enables notifications for the BLE characteristic."""
         self.notifButton.setEnabled(False)
         try:

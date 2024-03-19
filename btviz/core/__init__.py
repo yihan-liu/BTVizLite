@@ -1,5 +1,5 @@
 # btviz/core/__init__.py
-from typing import Awaitable, Callable, List, Optional, Union
+from typing import Awaitable, Callable, List, Union
 
 from bleak import BleakScanner, BLEDevice, BleakClient
 from bleak.backends.service import BleakGATTService, BleakGATTServiceCollection
@@ -7,10 +7,27 @@ from bleak.backends.characteristic import BleakGATTCharacteristic
 from bleak.exc import BleakError
 
 
+# noinspection PyAttributeOutsideInit
 class BTManager:
-    def __init__(self):
-        self.scanner: BleakScanner = BleakScanner()
-        self.client: Optional[BleakClient] = None
+    _instance = None  # Class variable to store the singleton instance
+
+    def __new__(cls):
+        """Override the __new__ method to create a singleton instance"""
+        if cls._instance is None:
+            # If no instance exists, create a new one
+            cls._instance = super().__new__(cls)
+            # Initialize the scanner and client variables
+            cls._instance.scanner = BleakScanner()
+            cls._instance.client = None
+        return cls._instance  # return the singleton instance
+
+    @classmethod
+    def instance(cls):
+        """Class method to provide access to the singleton instance"""
+        if cls._instance is None:
+            # If no instance exists, create a new one
+            cls._instance = cls()
+        return cls._instance  # Return the singleton instance
 
     async def scan_devices(self) -> List[BLEDevice]:
         devices = await self.scanner.discover()

@@ -1,7 +1,13 @@
 # connect_widget.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QLabel, QMessageBox
+from PyQt5.QtWidgets import (QWidget,
+                             QVBoxLayout,
+                             QPushButton,
+                             QListWidget,
+                             QLabel,
+                             QMessageBox)
 import qasync
 
+from btviz.core import BTManager
 from btviz.ui_utils import calculate_window
 from .display_widget import DisplayWidget
 
@@ -10,7 +16,7 @@ class ConnectWidget(QWidget):
     def __init__(self, device):
         super().__init__()
 
-        self.bt_manager = None
+        self.bt_manager = BTManager.instance()
 
         # containers
         self.device = device
@@ -27,8 +33,8 @@ class ConnectWidget(QWidget):
         self.serviceButton = None
         self.connectButton = None
         self.servicesList = None
-        self.charList = None
-        self.charDisplayWindow = None
+        self.characteristicList = None
+        self.characteristicDisplayWindow = None
 
         # layout instance
         self.layout_ = QVBoxLayout(self)
@@ -43,7 +49,7 @@ class ConnectWidget(QWidget):
         self.setGeometry(xPos, yPos, windowWidth, windowHeight)
 
         self.serviceButton = QPushButton('Read Service', self)
-        self.serviceButton.clicked.connect(self.scanChar)
+        self.serviceButton.clicked.connect(self.scanCharacteristic)
         self.serviceButton.setEnabled(False)
 
         self.connectButton = QPushButton('Disconnect', self)
@@ -52,14 +58,14 @@ class ConnectWidget(QWidget):
 
         self.servicesList = QListWidget(self)
 
-        self.charList = QListWidget(self)
+        self.characteristicList = QListWidget(self)
 
         self.layout_.addWidget(self.connectButton)
         self.layout_.addWidget(QLabel('Service List'))
         self.layout_.addWidget(self.servicesList)
         self.layout_.addWidget(self.serviceButton)
         self.layout_.addWidget(QLabel('Characteristic List'))
-        self.layout_.addWidget(self.charList)
+        self.layout_.addWidget(self.characteristicList)
 
     @qasync.asyncSlot()
     async def disconnect(self):
@@ -67,8 +73,10 @@ class ConnectWidget(QWidget):
         Disconnects from the currently connected BLE device.
         """
         self.connectButton.setEnabled(False)
-        if self.bt_manager:
+        try:
             await self.bt_manager.disconnect_from_device()
+        except Exception as e:
+            QMessageBox.warning(self, "Warning", f"Unable to disconnect: {str(e)}")
         self.close()
 
     @qasync.asyncSlot()
@@ -91,7 +99,7 @@ class ConnectWidget(QWidget):
 
                     self.serviceButton.setEnabled(True)
 
-                    self.charList.doubleClicked.connect(self.charMonitor)
+                    self.characteristicList.doubleClicked.connect(self.initCharacteristicDisplayWindow)
             except Exception as e:
                 QMessageBox.warning(self, "Warning", f"Unable to connect: {str(e)}")
                 self.close()
@@ -100,7 +108,7 @@ class ConnectWidget(QWidget):
             self.close()
 
     @qasync.asyncSlot()
-    async def scanChar(self):
+    async def scanCharacteristic(self):
         """
         Scans for characteristics of the selected service and updates the UI.
         """
@@ -109,20 +117,19 @@ class ConnectWidget(QWidget):
             service = self.servicesDict[self.servicesList.currentItem().text()]
             chars = await self.bt_manager.get_characteristics(service)
             for char in chars:
-                self.charList.addItem(str(char.uuid))
+                self.characteristicList.addItem(str(char.uuid))
                 self.charDict[str(char.uuid)] = char
         else:
             QMessageBox.warning(self, "Warning", "Please select a valid characteristic.")
 
     @qasync.asyncSlot()
-    async def charMonitor(self):
+    async def initCharacteristicDisplayWindow(self):
         """
         Opens a display widget for the selected characteristic to monitor its data.
         """
-        m_char = self.charDict[self.charList.currentItem().text()]
-        self.charDisplayWindow = DisplayWidget(m_char)
-        self.charDisplayWindow.bt_manager = self.bt_manager  # set the bt_manager instance
-        self.charDisplayWindow.show()
+        m_char = self.charDict[self.characteristicList.currentItem().text()]
+        self.characteristicDisplayWindow = DisplayWidget(m_char)
+        self.characteristicDisplayWindow.show()
 
     @qasync.asyncClose
     async def closeEvent(self, event):
@@ -132,4 +139,3 @@ class ConnectWidget(QWidget):
             except Exception as e:
                 QMessageBox.warning(self, "Warning", f"Could not disconnect: {str(e)}")
                 pass
-            self.bt_manager = None

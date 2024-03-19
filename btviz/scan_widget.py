@@ -1,9 +1,14 @@
 # scan_widget.py
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QLabel, QMessageBox
+from PyQt5.QtWidgets import (QWidget,
+                             QVBoxLayout,
+                             QPushButton,
+                             QListWidget,
+                             QLabel,
+                             QMessageBox)
 import qasync
 
-from btviz.ui_utils import calculate_window
 from btviz.core import BTManager
+from btviz.ui_utils import calculate_window
 from .connect_widget import ConnectWidget
 
 
@@ -19,7 +24,7 @@ class ScanWidget(QWidget):
 
         # initialize the bluetooth manager,
         # the other windows will share this instance
-        self.bt_manager = BTManager()
+        self.bt_manager = BTManager().instance()
 
         # peripheral devices
         self.devicesDict = {}
@@ -85,7 +90,6 @@ class ScanWidget(QWidget):
         if self.devicesList.currentItem().text():
             device = self.devicesDict[self.devicesList.currentItem().text()]
             self.connectServicesWindow = ConnectWidget(device)
-            self.connectServicesWindow.bt_manager = self.bt_manager  # pass the bt_manager to next window
             self.connectServicesWindow.show()
         else:
             QMessageBox.warning(self, "Warning", "Select Valid Device")
