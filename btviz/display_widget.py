@@ -5,10 +5,12 @@ from PyQt5.QtWidgets import (QWidget,
                              QVBoxLayout,
                              QPushButton,
                              QPlainTextEdit,
-                             QMessageBox)
+                             QMessageBox,
+                             QSpinBox)
 import qasync
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import animation
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
@@ -35,22 +37,24 @@ class DisplayWidget(QWidget):
         # connection & display flags
         self.isNotif = False
         self.isRead = False
-        self.isFirstTransactions = True
+        # self.isFirstTransactions = True
         self.isFirstPlot = True
         self.isPlotting = False
 
         # data container
         self.data_queues = []
+        self.num_values_input = None
+        self.confirm_values_button = None
 
         # raw data
-        self.notifButton = None
+        self.start_notification_button = None
         self.textfield = None
 
         # save data
-        # self.saveButton = None  # TODO
+        # self.save_button = None  # TODO
 
         # display instances
-        self.plotButton = None
+        self.start_plot_button = None
 
         self.canvas = None
         self.fig = None
@@ -63,7 +67,7 @@ class DisplayWidget(QWidget):
         self.animation = None
 
         # plot setting
-        self.settingsButton = None
+        self.settings_button = None
         self.plot_setting_window = None
 
         # layout instance
@@ -80,35 +84,45 @@ class DisplayWidget(QWidget):
         self.setGeometry(x_pos, y_pos, window_width, window_height)
 
         # enable notification
-        self.notifButton = QPushButton('Enable Notifications')
-        self.notifButton.clicked.connect(self.enableNotification)
+        self.start_notification_button = QPushButton('Enable Notifications')
+        self.start_notification_button.clicked.connect(self.enableNotification)
+
+        # set number of values
+        self.num_values_input = QSpinBox()
+        self.num_values_input.setMinimum(1)
+        self.num_values_input.setValue(1)
+
+        self.confirm_values_button = QPushButton("Confirm number of values")
+        self.confirm_values_button.clicked.connect(self.confirmValues)
 
         # initialize plotting
-        self.plotButton = QPushButton('Plot')
-        self.plotButton.clicked.connect(self.plotInit)
-        self.plotButton.setEnabled(False)
+        self.start_plot_button = QPushButton('Plot')
+        self.start_plot_button.clicked.connect(self.onStartPlotting)
+        self.start_plot_button.setEnabled(False)
 
         # display decoded data
         self.textfield = QPlainTextEdit()
         self.textfield.setReadOnly(True)
 
         # plot settings
-        self.settingsButton = QPushButton("Plot Settings")
-        self.settingsButton.clicked.connect(self.onSettings)
+        self.settings_button = QPushButton("Plot Settings")
+        self.settings_button.clicked.connect(self.onSettings)
 
-        self.layout_.addWidget(self.notifButton)
+        self.layout_.addWidget(self.start_notification_button)
+        self.layout_.addWidget(self.num_values_input)
+        self.layout_.addWidget(self.confirm_values_button)
         self.layout_.addWidget(self.textfield)
-        self.layout_.addWidget(self.plotButton)
-        self.layout_.addWidget(self.settingsButton)
+        self.layout_.addWidget(self.start_plot_button)
+        self.layout_.addWidget(self.settings_button)
 
     @qasync.asyncSlot()
     async def onSettings(self):
         """Reveal plot settings window"""
         self.plot_setting_window = PlotSettingsWidget()
-        self.plot_setting_window.gotPlotSetting.connect(self.onGotSettings)
+        self.plot_setting_window.gotPlotSetting.connect(self.onGetSettings)
         self.plot_setting_window.show()
 
-    def onGotSettings(self, settings_str):
+    def onGetSettings(self, settings_str):
         """Update plot settings"""
         str_list = settings_str.split(",")
         self.title = str_list[0]
@@ -118,15 +132,21 @@ class DisplayWidget(QWidget):
         self.ax.set_xlabel(self.xlabel)
         self.ax.set_ylabel(self.ylabel)
 
+    def onStartPlotting(self):
+        self.start_plot_button.setEnabled(True)
+        self.animation = FuncAnimation(self.fig, self.plotUpdate, interval=self.animate_interval,
+                                       cache_frame_data=False, blit=True)
+        self.canvas.draw_idle()
+
     @qasync.asyncSlot()
     async def enableNotification(self):
         """Enables notifications for the BLE characteristic."""
-        self.notifButton.setEnabled(False)
+        self.start_notification_button.setEnabled(False)
         try:
             await self.bt_manager.start_notify(self.characteristic, self.decodeRoutine)
             self.isNotif = True
         except Exception as e:
-            QMessageBox.information(self, "Info", f"Unable to start notification: {e}")
+            QMessageBox.information(self, "Info", f"Unable to start notification: {str(e)}")
 
     def decodeRoutine(self, characteristic, value):
         """
@@ -135,32 +155,24 @@ class DisplayWidget(QWidget):
         :param characteristic: The characteristic that sent the notification.
         :param value: The value of the notification.
         """
-        decoded_str = ''
+        decoded_str = ""
         decoded_list = []
         try:
             decoded_str = value.decode("UTF-8")  # decode the data to string
             decoded_list = decoded_str.split(",")  # split the data with delimiter
         except Exception as e:
-            QMessageBox.warning(self, "Warning", f"Unable to decode: {e}")
+            QMessageBox.warning(self, "Warning", f"Unable to decode: {str(e)}")
             self.close()
 
         # Wrap the text to display to the textfield window
         display_text = str(decoded_str) + '\n' + self.textfield.toPlainText()
         self.textfield.setPlainText(display_text)
 
-        # Initialize the container of data dequeue
-        if self.isFirstTransactions:
-            self.data_queues = []  # container for data in the text panel
-            self.lines = []  # container for lines in the plot panel
-
-            # for every datapoint in the list, create one deque
-            # TODO: let user to define the number of datapoints
-            for _ in decoded_list:
-                self.data_queues.append(deque(maxlen=100))
-
-            self.isFirstTransactions = False
-            self.plotButton.setEnabled(True)
-            # self.saveButton.setEnabled(True)
+        if len(decoded_list) != len(self.data_queues):
+            QMessageBox.warning(self, "Warning",
+                                f"Length of received data ({len(decoded_list)}) \
+                                does not match the expected number of values: {len(self.data_queues)}")
+            return
 
         for idx, decoded_item in enumerate(decoded_list):
             try:
@@ -168,6 +180,41 @@ class DisplayWidget(QWidget):
                 self.data_queues[idx].append(decoded_item_float)
             except Exception as e:
                 QMessageBox.warning(self, "Warning", f"Unable to decode: {e}")
+
+    def confirmValues(self):
+        num_values = self.num_values_input.value()
+
+        self.data_queues = [deque([0] * 100, maxlen=100) for _ in range(num_values)]
+
+        # Initialize plot panel
+        if self.isFirstPlot:
+            self.fig, self.axes = plt.subplots(nrows=len(self.data_queues),
+                                               ncols=1)
+            self.canvas = FigureCanvas(self.fig)
+            self.title = "ADC"
+            self.xlabel = "Sample"
+            self.ylabel = "Value"
+            self.axes[-1].set(xlabel=self.xlabel)
+
+            self.lines = []
+            for ax, data_queue in zip(self.axes, self.data_queues):
+                line, = ax.plot(data_queue)
+                self.lines.append(line)
+                ax.set(ylabel=self.ylabel)
+
+            self.layout_.addWidget(self.canvas)
+            self.isFirstPlot = False
+
+        else:
+            for line, data_queue in zip(self.lines, self.data_queues):
+                line.set_ydata(data_queue)
+
+        self.start_plot_button.setEnabled(False)
+        self.animation = FuncAnimation(self.fig, self.plotUpdate, interval=1, cache_frame_data=False)
+        self.isPlotting = True
+
+        self.start_plot_button.setEnabled(True)
+        self.canvas.draw_idle()
 
     def plotUpdate(self, frame):
         """
@@ -186,32 +233,6 @@ class DisplayWidget(QWidget):
                 # Set line color
                 line.set_color('r')
         return self.lines
-
-    def plotInit(self):
-        """
-        Starts plotting the BLE characteristic data in real-time.
-        """
-        # Initialize plot panel
-        if self.isFirstPlot:
-            self.fig, self.axes = plt.subplots(nrows=len(self.data_queues),
-                                               ncols=1)
-            self.canvas = FigureCanvas(self.fig)
-            self.title = "ADC"
-            self.xlabel = "Sample"
-            self.ylabel = "Value"
-            self.axes[-1].set(xlabel=self.xlabel)
-            for ax, data_queue in zip(self.axes, self.data_queues):
-                line, = ax.plot(data_queue)
-                self.lines.append(line)
-                ax.set(ylabel=self.ylabel)
-
-            self.layout_.addWidget(self.canvas)
-            self.isFirstPlot = False
-
-        self.plotButton.setEnabled(False)
-        self.animation = FuncAnimation(self.fig, self.plotUpdate, interval=1, cache_frame_data=False)
-        self.isPlotting = True
-        self.canvas.draw_idle()
 
     @qasync.asyncSlot()
     async def timeoutHandler(self):
