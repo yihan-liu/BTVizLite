@@ -3,3 +3,5 @@ matplotlib==3.8.2
 PyQt5==5.15.10
 PyQt5_sip==12.13.0
 qasync==0.27.1
+
+numpy~=1.26.3

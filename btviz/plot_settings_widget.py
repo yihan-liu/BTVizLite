@@ -16,16 +16,16 @@ class PlotSettingsWidget(QWidget):
         self.yAxisText = QTextEdit()
         self.windowText = QTextEdit()
         self.saveButton = QPushButton("save settings")
-        self.init_ui()
+        self.initUI()
 
-    def init_ui(self):
+    def initUI(self):
         self.setWindowTitle("Plot Settings")
 
         self.titleText.setPlainText("Characteristic Value")
         self.xAxisText.setPlainText("Time (a.u.)")
         self.yAxisText.setPlainText("Value (a.u.)")
         self.windowText.setPlainText("50")
-        self.saveButton.clicked.connect(self.on_save)
+        self.saveButton.clicked.connect(self.onSave)
 
         layout = QFormLayout(self)
 
@@ -39,7 +39,7 @@ class PlotSettingsWidget(QWidget):
         layout.addWidget(self.windowText)
         layout.addWidget(self.saveButton)
 
-    def on_save(self):
+    def onSave(self):
         ret_str = self.titleText.toPlainText() + ',' \
                   + self.xAxisText.toPlainText() + ',' \
                   + self.yAxisText.toPlainText() + ',' \

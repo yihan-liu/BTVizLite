@@ -1,24 +1,22 @@
 # display_widget.py
+from collections import deque
+
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QPlainTextEdit, QMessageBox
 import qasync
-import struct
-from collections import deque
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+
 from .utils import calculate_window
 from .plot_settings_widget import PlotSettingsWidget
 
 
 class DisplayWidget(QWidget):
-    """
-    A widget for displaying BLE characteristic data and plotting it in real-time.
-    """
+    """A widget for displaying BLE characteristic data and plotting it in real-time."""
 
     def __init__(self, client, char):
-        """
-        Initializes the display widget.
+        """Initializes the display widget.
 
         :param client: A BleakClient connected to the BLE device.
         :param char: The characteristic to monitor and display.
@@ -29,40 +27,47 @@ class DisplayWidget(QWidget):
         self.m_client = client
         self.m_char = char
 
-        # data container
-        self.data_queues = []
-
         # connection & display flags
         self.isNotif = False
         self.isRead = False
         self.isFirstTransactions = True
         self.isFirstPlot = True
+        self.isPlotting = False
+
+        # data container
+        self.data_queues = []
 
         # raw data
         self.notifButton = None
         self.textfield = None
+
+        # save data
         # self.saveButton = None  # TODO
 
         # display instances
         self.plotButton = None
-        self.isPlotting = False
+
+        self.fig = None
+        self.axes = None
         self.lines = None
         self.title = None
         self.xlabel = None
         self.ylabel = None
-        self.animateInterval = None
+        self.animate_interval = None
         self.animation = None
-        
+
+        # plot setting
         self.settingsButton = None
-        
-        self.window = None
+        self.plot_setting_window = None
+
+        # layout instance
+        self.layout_ = None
 
         self.initUI()
 
     def initUI(self):
-        """
-        Initializes the user interface for the display widget.
-        """
+        """Initializes the user interface for the display widget."""
+        # init the display window
         self.setWindowTitle('Characteristic Reader')
         window_width, window_height, x_pos, y_pos = calculate_window(scale_width=0.5, scale_height=0.7)
         self.setGeometry(x_pos, y_pos, window_width, window_height)
@@ -71,9 +76,9 @@ class DisplayWidget(QWidget):
         self.notifButton = QPushButton('Enable Notifications')
         self.notifButton.clicked.connect(self.enableNotif)
 
-        # start plotting
+        # initialize plotting
         self.plotButton = QPushButton('Plot')
-        self.plotButton.clicked.connect(self.plot)
+        self.plotButton.clicked.connect(self.plotInit)
         self.plotButton.setEnabled(False)
 
         # display decoded data
@@ -84,25 +89,31 @@ class DisplayWidget(QWidget):
         self.settingsButton = QPushButton("Plot Settings")
         self.settingsButton.clicked.connect(self.onSettings)
 
-        self.my_layout = QVBoxLayout(self)
-        self.my_layout.addWidget(self.notifButton)
-        self.my_layout.addWidget(self.textfield)
-        self.my_layout.addWidget(self.plotButton)
-        self.my_layout.addWidget(self.settingsButton)
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.addWidget(self.notifButton)
+        self.layout_.addWidget(self.textfield)
+        self.layout_.addWidget(self.plotButton)
+        self.layout_.addWidget(self.settingsButton)
+
+    @qasync.asyncSlot()
+    async def enableNotif(self):
+        """Enables notifications for the BLE characteristic."""
+        self.notifButton.setEnabled(False)
+        try:
+            await self.m_client.start_notify(self.m_char, self.decodeRoutine)
+            self.isNotif = True
+        except Exception as e:
+            QMessageBox.information(self, "Info", f"Unable to start notification: {e}")
 
     @qasync.asyncSlot()
     async def onSettings(self):
-        """
-        Reveal plot settings scanServicesWindow
-        """
-        self.window = PlotSettingsWidget()
-        self.window.gotPlotSetting.connect(self.onGotSettings)
-        self.window.show()
+        """Reveal plot settings window"""
+        self.plot_setting_window = PlotSettingsWidget()
+        self.plot_setting_window.gotPlotSetting.connect(self.onGotSettings)
+        self.plot_setting_window.show()
 
     def onGotSettings(self, settings_str):
-        """
-        Update plot settings
-        """
+        """Update plot settings"""
         str_list = settings_str.split(",")
         self.title = str_list[0]
         self.xlabel = str_list[1]
@@ -111,19 +122,6 @@ class DisplayWidget(QWidget):
         self.ax.set_xlabel(self.xlabel)
         self.ax.set_ylabel(self.ylabel)
 
-    @qasync.asyncSlot()
-    async def enableNotif(self):
-        """
-        Enables notifications for the BLE characteristic.
-        """
-        self.notifButton.setEnabled(False)
-        try:
-            await self.m_client.start_notify(self.m_char, self.decodeRoutine)
-            self.isNotif = True
-        except Exception as e:
-            QMessageBox.information(self, "Info", f"Unable to start notification: {e}")
-            # raise NotificationError(f"Unable to start notification {str(e)}")
-
     def decodeRoutine(self, char, value):
         """
         Routine that Handles decoding of the BLE characteristic.
@@ -131,6 +129,8 @@ class DisplayWidget(QWidget):
         :param char: The characteristic that sent the notification.
         :param value: The value of the notification.
         """
+        decoded_str = ''
+        decoded_list = []
         try:
             decoded_str = value.decode("UTF-8")  # decode the data to string
             decoded_list = decoded_str.split(",")  # split the data with delimiter
@@ -142,7 +142,7 @@ class DisplayWidget(QWidget):
         display_text = str(decoded_str) + '\n' + self.textfield.toPlainText()
         self.textfield.setPlainText(display_text)
 
-        # Initialize the container of data deques
+        # Initialize the container of data dequeue
         if self.isFirstTransactions:
             self.data_queues = []  # container for data in the text panel
             self.lines = []  # container for lines in the plot panel
@@ -159,9 +159,9 @@ class DisplayWidget(QWidget):
         for idx, decoded_item in enumerate(decoded_list):
             try:
                 decoded_item_float = float(decoded_item.replace('\x00', ''))
+                self.data_queues[idx].append(decoded_item_float)
             except Exception as e:
                 QMessageBox.warning(self, "Warning", f"Unable to decode: {e}")
-            self.data_queues[idx].append(decoded_item_float)
 
     def plotUpdate(self, frame):
         """
@@ -181,7 +181,7 @@ class DisplayWidget(QWidget):
                 line.set_color('r')
         return self.lines
 
-    def plot(self):
+    def plotInit(self):
         """
         Starts plotting the BLE characteristic data in real-time.
         """
@@ -199,7 +199,7 @@ class DisplayWidget(QWidget):
                 self.lines.append(line)
                 ax.set(ylabel=self.ylabel)
 
-            self.my_layout.addWidget(self.canvas)
+            self.layout_.addWidget(self.canvas)
             self.isFirstPlot = False
 
         self.plotButton.setEnabled(False)
