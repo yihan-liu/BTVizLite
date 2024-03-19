@@ -1,9 +1,10 @@
 # scan_widget.py
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QListWidget, QLabel, QMessageBox
 import qasync
-import bleak
+
+from btviz.ui_utils import calculate_window
+from btviz.core import BTManager
 from .connect_widget import ConnectWidget
-from .utils import calculate_window
 
 
 class ScanWidget(QWidget):
@@ -16,19 +17,26 @@ class ScanWidget(QWidget):
         """
         super().__init__()
 
-        self.m_scanner = bleak.BleakScanner()
-        self.m_client = None
-        self.isDeviceDiscovered = False
+        # initialize the bluetooth manager,
+        # the other windows will share this instance
+        self.bt_manager = BTManager()
 
+        # peripheral devices
         self.devicesDict = {}
+        self.isDeviceDiscovered = False
 
         # UI elements
         self.scanButton = None
         self.connectButton = None
         self.devicesList = None
 
-        self.scanServicesWindow = None
+        # new window to pop up
+        self.connectServicesWindow = None
 
+        # layout instance
+        self.layout_ = None
+
+        # start UI
         self.initUI()
 
     def initUI(self):
@@ -39,8 +47,6 @@ class ScanWidget(QWidget):
         window_width, window_height, x_pos, y_pos = calculate_window(scale_width=0.2, scale_height=0.7)
         self.setGeometry(x_pos, y_pos, window_width, window_height)
 
-        layout = QVBoxLayout(self)
-
         self.scanButton = QPushButton('Scan for Devices', self)
         self.scanButton.clicked.connect(self.scanDevices)
 
@@ -49,10 +55,11 @@ class ScanWidget(QWidget):
 
         self.devicesList = QListWidget(self)
 
-        layout.addWidget(self.scanButton)
-        layout.addWidget(QLabel('Device List'))
-        layout.addWidget(self.devicesList)
-        layout.addWidget(self.connectButton)
+        self.layout_ = QVBoxLayout(self)
+        self.layout_.addWidget(self.scanButton)
+        self.layout_.addWidget(QLabel('Device List'))
+        self.layout_.addWidget(self.devicesList)
+        self.layout_.addWidget(self.connectButton)
 
     @qasync.asyncSlot()
     async def scanDevices(self):
@@ -60,7 +67,7 @@ class ScanWidget(QWidget):
         Scans for BLE devices and updates the UI with the results.
         """
         self.scanButton.setEnabled(False)
-        devices = await bleak.BleakScanner.discover()
+        devices = await self.bt_manager.scan_devices()
 
         for device in devices:
             self.devicesList.addItem(device.name)
@@ -77,16 +84,16 @@ class ScanWidget(QWidget):
     def scanServices(self):
         if self.devicesList.currentItem().text():
             device = self.devicesDict[self.devicesList.currentItem().text()]
-            self.scanServicesWindow = ConnectWidget(device)
-            self.scanServicesWindow.show()
+            self.connectServicesWindow = ConnectWidget(device)
+            self.connectServicesWindow.bt_manager = self.bt_manager  # pass the bt_manager to next window
+            self.connectServicesWindow.show()
         else:
-            QMessageBox.warning(self, 'Warning', 'Select Valid Device')
+            QMessageBox.warning(self, "Warning", "Select Valid Device")
 
     def clearAll(self):
         """
         Clears all discovered devices and resets the UI.
         """
-
         self.devicesList.clear()
 
         self.devicesDict = {}

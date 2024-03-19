@@ -8,24 +8,24 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
-from .utils import calculate_window
+from btviz.ui_utils import calculate_window
 from .plot_settings_widget import PlotSettingsWidget
 
 
 class DisplayWidget(QWidget):
     """A widget for displaying BLE characteristic data and plotting it in real-time."""
 
-    def __init__(self, client, char):
+    def __init__(self, characteristic):
         """Initializes the display widget.
 
-        :param client: A BleakClient connected to the BLE device.
-        :param char: The characteristic to monitor and display.
+        :param characteristic: The characteristic to monitor and display.
         """
         super().__init__()
 
+        self.bt_manager = None
+
         # BLE instances
-        self.m_client = client
-        self.m_char = char
+        self.characteristic = characteristic
 
         # connection & display flags
         self.isNotif = False
@@ -47,6 +47,7 @@ class DisplayWidget(QWidget):
         # display instances
         self.plotButton = None
 
+        self.canvas = None
         self.fig = None
         self.axes = None
         self.lines = None
@@ -61,8 +62,9 @@ class DisplayWidget(QWidget):
         self.plot_setting_window = None
 
         # layout instance
-        self.layout_ = None
+        self.layout_ = QVBoxLayout(self)
 
+        # start UI
         self.initUI()
 
     def initUI(self):
@@ -89,21 +91,10 @@ class DisplayWidget(QWidget):
         self.settingsButton = QPushButton("Plot Settings")
         self.settingsButton.clicked.connect(self.onSettings)
 
-        self.layout_ = QVBoxLayout(self)
         self.layout_.addWidget(self.notifButton)
         self.layout_.addWidget(self.textfield)
         self.layout_.addWidget(self.plotButton)
         self.layout_.addWidget(self.settingsButton)
-
-    @qasync.asyncSlot()
-    async def enableNotif(self):
-        """Enables notifications for the BLE characteristic."""
-        self.notifButton.setEnabled(False)
-        try:
-            await self.m_client.start_notify(self.m_char, self.decodeRoutine)
-            self.isNotif = True
-        except Exception as e:
-            QMessageBox.information(self, "Info", f"Unable to start notification: {e}")
 
     @qasync.asyncSlot()
     async def onSettings(self):
@@ -122,11 +113,21 @@ class DisplayWidget(QWidget):
         self.ax.set_xlabel(self.xlabel)
         self.ax.set_ylabel(self.ylabel)
 
-    def decodeRoutine(self, char, value):
+    @qasync.asyncSlot()
+    async def enableNotif(self):
+        """Enables notifications for the BLE characteristic."""
+        self.notifButton.setEnabled(False)
+        try:
+            await self.bt_manager.start_notify(self.characteristic, self.decodeRoutine)
+            self.isNotif = True
+        except Exception as e:
+            QMessageBox.information(self, "Info", f"Unable to start notification: {e}")
+
+    def decodeRoutine(self, characteristic, value):
         """
         Routine that Handles decoding of the BLE characteristic.
 
-        :param char: The characteristic that sent the notification.
+        :param characteristic: The characteristic that sent the notification.
         :param value: The value of the notification.
         """
         decoded_str = ''
@@ -212,8 +213,8 @@ class DisplayWidget(QWidget):
         """
         Handles characteristic reading timer timeouts
         """
-        value = await self.m_client.read_gatt_char(self.m_char)
-        self.decodeRoutine(self.m_char, value)
+        value = await self.bt_manager.read_characteristic(self.characteristic)
+        self.decodeRoutine(self.characteristic, value)
 
     @qasync.asyncClose
     async def closeEvent(self, event):
@@ -221,4 +222,4 @@ class DisplayWidget(QWidget):
         Routine that terminates characteristic operations prior to scanServicesWindow closure
         """
         if self.isNotif:
-            await self.m_client.stop_notify(self.m_char)
+            await self.bt_manager.stop_notify(self.characteristic)
