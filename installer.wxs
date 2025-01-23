@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Product Id="*" Name="BtViz" Language="1033" Version="1.0.0" Manufacturer="Yihan Liu" UpgradeCode="720ee6ae-4fe2-4ec4-958d-52ecd40abdab">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of this application is already installed." />
+    <MediaTemplate />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="BtViz">
+          <Component Id="AppFiles" Guid="48b9396b-d63d-491e-a65a-0c63f41fc234">
+            <!-- Include the Python script -->
+            <File Id="BtVizFile" Source="dist\btviz.py" KeyPath="yes"/>
+            <!-- Include the batch file -->
+            <File Id="RunBatchFile" Source="dist\run.bat"/>
+          </Component>
+          <Directory Id="VenvDir" Name=".venv">
+            <Component Id="VenvFiles" Guid="af6869c0-cf09-4c21-8d07-ffd0d2578f62">
+              <!-- Include all files in .venv -->
+              <DirectoryRef Id="VenvDir">
+                <File Id="VirtualEnvFiles" Source="dist\.venv\*" />
+              </DirectoryRef>
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="MainFeature" Title="BtViz" Level="1">
+      <ComponentRef Id="AppFiles" />
+      <ComponentRef Id="VenvFiles" />
+    </Feature>
+  </Product>
+</Wix>
